@@ -115,7 +115,7 @@ function lessonView(id) {
 function songView(id) {
   cleanupYT(); stopAudio(); const L = LESSONS.find(x => x.id === id); const vid = L.youtube && L.youtube.id;
   let h = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>${esc(L.title)}</h2></div>`;
-  if (vid) h += `<div class="ytwrap" id="ytwrap"><div id="ytplayer"></div></div><button class="ytthrough" onclick="ytThrough()">🎬 動画で通し再生（歌詞が追従）</button><p class="hint">歌詞をタップ → その行だけ再生 · 🔊 = お手本の声</p>`;
+  if (vid) h += `<div class="ytwrap" id="ytwrap"><div class="ytinner"><div id="ytplayer"></div></div></div><button class="ytthrough" onclick="ytThrough()">🎬 動画で通し再生（歌詞が追従）</button><p class="hint">歌詞をタップ → その行だけ再生 · 🔊 = お手本の声</p>`;
   else h += `<a class="ytbig" href="https://www.youtube.com/results?search_query=${encodeURIComponent(L.title)}" target="_blank" rel="noopener">▶ YouTubeで検索</a>`;
   h += `<div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部(声)</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
   h += `<div class="lines">` + L.lines.map((ln, i) => songLine(L, ln, i)).join('') + `</div>`;
@@ -123,7 +123,7 @@ function songView(id) {
   if (vid) {
     const off = (L.youtube.offset) || 0;
     ytSegs = L.lines.map((ln, i) => ln.yt != null ? { i, t: ln.yt + off, e: (ln.ytEnd != null ? ln.ytEnd : ln.yt + 6) + off } : null).filter(Boolean);
-    const w = document.getElementById('ytwrap'); ytThresh = (w && w.offsetHeight) || 240; ensureYT(vid);
+    const w = document.getElementById('ytwrap'); ytThresh = w && w.offsetHeight ? Math.round(w.offsetHeight * 0.6) : 200; ensureYT(vid);
   }
 }
 function setOn(i) { const els = document.querySelectorAll('.line'); els.forEach(e => e.classList.remove('on')); if (els[i]) els[i].classList.add('on'); return els[i]; }

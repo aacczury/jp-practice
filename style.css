@@ -43,9 +43,10 @@ footer{ color:var(--dim); font-size:12px; text-align:center; margin-top:26px; }
 .line .mn{ color:var(--dim); font-size:14px; margin-top:5px; }
 .star{ background:none; border:none; color:var(--accent); font-size:20px; line-height:1.2; padding:0; width:26px; cursor:pointer; align-self:flex-start; }
 .ytbig{ display:block; text-align:center; color:#fff; background:#cc0000; border-radius:11px; padding:12px; margin-bottom:14px; text-decoration:none; font-size:15px; }
-.ytwrap{ position:sticky; top:6px; z-index:50; width:100%; aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden; margin-bottom:8px; transition:width .18s; }
-.ytwrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
-.ytwrap.mini{ position:fixed; top:calc(8px + env(safe-area-inset-top)); right:8px; width:42vw; max-width:190px; margin:0; box-shadow:0 6px 22px rgba(0,0,0,.55); }
+.ytwrap{ position:relative; width:100%; aspect-ratio:16/9; margin-bottom:8px; }   /* placeholder: always reserves the space, so the layout never jumps */
+.ytinner{ position:absolute; inset:0; background:#000; border-radius:12px; overflow:hidden; z-index:50; }
+.ytinner iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
+.ytwrap.mini .ytinner{ position:fixed; top:calc(8px + env(safe-area-inset-top)); right:8px; width:42vw; max-width:190px; height:auto; aspect-ratio:16/9; z-index:200; box-shadow:0 6px 22px rgba(0,0,0,.55); }
 .ytthrough{ display:block; width:100%; text-align:center; background:var(--card); border:1px solid var(--line); color:var(--fg); border-radius:11px; padding:11px; margin:0 0 8px; font-size:15px; cursor:pointer; }
 .hint{ color:var(--dim); font-size:12px; margin:0 2px 12px; }
 .line.song.on{ outline:2px solid var(--accent); background:var(--card2); }
