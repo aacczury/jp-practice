@@ -63,8 +63,11 @@ window.addEventListener('scroll', () => { const w = document.getElementById('ytw
 // ---- rendering ----
 const esc = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;');
 function lineRow(L, ln, i) {
-  return `<div class="line" onclick="tap('${L.id}',${i})"><button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button>` +
-    `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div></div>`;
+  const av = ln.spk === 'her' ? '👩' : (ln.spk === 'me' ? '🧑' : '');
+  return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" onclick="tap('${L.id}',${i})">` +
+    (av ? `<div class="av av-${ln.spk}">${av}</div>` : '') +
+    `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
+    `<button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button></div>`;
 }
 function songLine(L, ln, i) {
   const hasYT = L.youtube && L.youtube.id && ln.yt != null;
