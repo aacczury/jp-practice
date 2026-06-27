@@ -49,6 +49,10 @@ footer{ color:var(--dim); font-size:12px; text-align:center; margin-top:26px; }
 .ytwrap.mini .ytinner{ position:fixed; top:calc(8px + env(safe-area-inset-top)); right:8px; width:42vw; max-width:190px; height:auto; aspect-ratio:16/9; z-index:200; box-shadow:0 6px 22px rgba(0,0,0,.55); }
 .ytthrough{ display:block; width:100%; text-align:center; background:var(--card); border:1px solid var(--line); color:var(--fg); border-radius:11px; padding:11px; margin:0 0 8px; font-size:15px; cursor:pointer; }
 .hint{ color:var(--dim); font-size:12px; margin:0 2px 12px; }
+.pgnav{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+.pgnav button{ background:var(--card); border:1px solid var(--line); color:var(--fg); border-radius:10px; padding:9px 16px; font-size:14px; cursor:pointer; }
+.pgnav button:disabled{ opacity:.35; }
+.pgnav span{ color:var(--dim); font-size:13px; text-align:center; flex:1; }
 .line.song.on{ outline:2px solid var(--accent); background:var(--card2); }
 .line.song{ align-items:center; }
 .line.song .ts{ color:var(--dim); font-size:12px; margin-left:6px; white-space:nowrap; }
