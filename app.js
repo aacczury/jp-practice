@@ -92,9 +92,15 @@ function songLine(L, ln, i) {
     `<button class="spk" onclick="tapSong('${L.id}',${i});event.stopPropagation()">🔊</button></div>`;
 }
 
+// ---- history (browser/back-gesture navigation) ----
+let navLock = false;
+function pushNav(state) { if (navLock) return; const c = history.state; if (c && c.view === state.view && c.id === state.id) return; try { history.pushState(state, ''); } catch (e) {} }
+function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else home(); navLock = false; }
+window.addEventListener('popstate', (e) => renderView(e.state));
+
 // ---- views ----
 function home() {
-  cleanupYT(); stopAudio();
+  pushNav({ view: 'home' }); cleanupYT(); stopAudio();
   const due = dueList().length, fav = favLoad().length;
   const days = LESSONS.filter(l => l.type === 'day'), songs = LESSONS.filter(l => l.type === 'song');
   let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="toggleTheme()">◐</button></div><p class="sub">タップで再生 · オフラインOK</p></header>`;
@@ -105,14 +111,14 @@ function home() {
   app.innerHTML = h; window.scrollTo(0, 0);
 }
 function lessonView(id) {
-  cleanupYT(); stopAudio(); const L = LESSONS.find(x => x.id === id); enroll(L);
-  let h = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>${esc(L.title)}</h2></div><div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
+  pushNav({ view: 'lesson', id }); cleanupYT(); stopAudio(); const L = LESSONS.find(x => x.id === id); enroll(L);
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>${esc(L.title)}</h2></div><div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
   h += `<div class="lines">` + L.lines.map((ln, i) => lineRow(L, ln, i)).join('') + `</div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
 function songView(id) {
-  cleanupYT(); stopAudio(); curSong = LESSONS.find(x => x.id === id); curPage = 0; const L = curSong, vid = L.youtube && L.youtube.id;
-  let h = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>${esc(L.title)}</h2></div>`;
+  pushNav({ view: 'song', id }); cleanupYT(); stopAudio(); curSong = LESSONS.find(x => x.id === id); curPage = 0; const L = curSong, vid = L.youtube && L.youtube.id;
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>${esc(L.title)}</h2></div>`;
   if (vid) h += `<div class="ytwrap" id="ytwrap"><div class="ytinner"><div id="ytplayer"></div></div></div><button class="ytthrough" onclick="ytThrough()">🎬 動画で通し再生（歌詞が追従）</button><p class="hint">歌詞をタップ → その行だけ再生 · 🔊 = お手本の声</p>`;
   else h += `<a class="ytbig" href="https://www.youtube.com/results?search_query=${encodeURIComponent(L.title)}" target="_blank" rel="noopener">▶ YouTubeで検索</a>`;
   h += `<div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部(声)</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
@@ -153,8 +159,8 @@ async function playAll(id, shadow) {
 function toggleSlow() { slow = !slow; const b = document.getElementById('slowb'); if (b) { b.classList.toggle('on', slow); b.innerHTML = `🐢 ${slow ? 'ゆっくり' : 'ふつう'}`; } }
 
 function favView() {
-  cleanupYT(); stopAudio(); const favs = favLoad().filter(ja => IDX[ja]);
-  let h = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>★ お気に入り</h2></div>`;
+  pushNav({ view: 'fav' }); cleanupYT(); stopAudio(); const favs = favLoad().filter(ja => IDX[ja]);
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>★ お気に入り</h2></div>`;
   if (!favs.length) { app.innerHTML = h + `<p class="empty">まだありません — 各文の ☆ をタップ</p>`; return; }
   app.innerHTML = h + `<div class="lines">` + favs.map(ja => { const e = IDX[ja]; return lineRow(e.lesson, e.line, e.idx); }).join('') + `</div>`; window.scrollTo(0, 0);
 }
@@ -162,8 +168,8 @@ function favView() {
 // ---- review ----
 let queue = [], qi = 0;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; };
-function reviewView() { cleanupYT(); stopAudio(); queue = shuffle(dueList()); qi = 0; if (!queue.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } rcard(); }
-function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[qi]].line; app.innerHTML = `<div class="lh"><button class="back" onclick="home()">‹</button><h2>復習 ${qi + 1}/${queue.length}</h2></div><div class="rev"><div class="mn big">${esc(ln.meaning) || '—'}</div><div id="ans" class="ans hidden"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}</div><div id="rb"><button class="big-btn" onclick="reveal()">答えを見る 🔊</button></div></div>`; }
+function reviewView() { pushNav({ view: 'review' }); cleanupYT(); stopAudio(); queue = shuffle(dueList()); qi = 0; if (!queue.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } rcard(); }
+function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[qi]].line; app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>復習 ${qi + 1}/${queue.length}</h2></div><div class="rev"><div class="mn big">${esc(ln.meaning) || '—'}</div><div id="ans" class="ans hidden"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}</div><div id="rb"><button class="big-btn" onclick="reveal()">答えを見る 🔊</button></div></div>`; }
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
@@ -173,5 +179,5 @@ applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
   LESSONS = d.lessons;
   for (const L of LESSONS) L.lines.forEach((ln, i) => { if (!IDX[ln.ja]) IDX[ln.ja] = { lesson: L, line: ln, idx: i }; });
-  home();
+  history.replaceState({ view: 'home' }, ''); navLock = true; home(); navLock = false;
 }).catch(() => { app.innerHTML = '<p class="empty">読み込み失敗 😢</p>'; });
