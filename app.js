@@ -158,10 +158,15 @@ async function playAll(id, shadow) {
   for (const i of idxs) {
     if (my !== token) return; const ln = L.lines[i]; const el = setOn(i); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     if (await rawPlay(L, ln) === 'abort' || my !== token) return;
-    const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.6;
-    await sleep(shadow ? dur * 1000 * 1.15 : 250);
+    if (shadow) {                                   // your turn: pause so you can repeat it aloud
+      const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.8;
+      if (el) el.classList.add('rep');
+      await sleep(Math.max(1300, dur * 1000 * 1.3));
+      if (el) el.classList.remove('rep');
+      if (my !== token) return;
+    } else await sleep(250);
   }
-  document.querySelectorAll('.line').forEach(e => e.classList.remove('on'));
+  document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 function toggleSlow() { slow = !slow; const b = document.getElementById('slowb'); if (b) { b.classList.toggle('on', slow); b.innerHTML = `🐢 ${slow ? 'ゆっくり' : 'ふつう'}`; } }
 
