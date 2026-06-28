@@ -8,9 +8,16 @@ function unlock() { if (unlocked) return; unlocked = true; player.play().then(()
 document.addEventListener('touchend', unlock, { once: true });
 document.addEventListener('click', unlock, { once: true });
 
-// ---- theme ----
-function applyTheme() { document.body.className = localStorage.getItem('jp_theme') === 'light' ? 'light' : ''; }
-function toggleTheme() { localStorage.setItem('jp_theme', localStorage.getItem('jp_theme') === 'light' ? 'dark' : 'light'); applyTheme(); }
+// ---- theme: system / light / dark ----
+const themeIcon = t => t === 'light' ? '☀️' : t === 'dark' ? '🌙' : '🖥️';
+function applyTheme() {
+  const t = localStorage.getItem('jp_theme') || 'system';
+  const eff = (t === 'light' || t === 'dark') ? t : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.body.className = eff === 'light' ? 'light' : '';
+  const b = document.querySelector('.theme'); if (b) b.textContent = themeIcon(t);
+}
+function cycleTheme() { const o = ['system', 'light', 'dark']; const t = localStorage.getItem('jp_theme') || 'system'; localStorage.setItem('jp_theme', o[(o.indexOf(t) + 1) % 3]); applyTheme(); }
+if (window.matchMedia) try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((localStorage.getItem('jp_theme') || 'system') === 'system') applyTheme(); }); } catch (e) {}
 
 // ---- favorites ----
 const favLoad = () => JSON.parse(localStorage.getItem('jp_fav') || '[]');
@@ -103,7 +110,7 @@ function home() {
   pushNav({ view: 'home' }); cleanupYT(); stopAudio();
   const due = dueList().length, fav = favLoad().length;
   const days = LESSONS.filter(l => l.type === 'day'), songs = LESSONS.filter(l => l.type === 'song');
-  let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="toggleTheme()">◐</button></div><p class="sub">タップで再生 · オフラインOK</p></header>`;
+  let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="cycleTheme()">${themeIcon(localStorage.getItem('jp_theme') || 'system')}</button></div><p class="sub">タップで再生 · オフラインOK</p></header>`;
   h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="reviewView()">🔁 復習 ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn ${fav ? '' : 'dim'}" onclick="favView()">★ お気に入り ${fav ? `<b>${fav}</b>` : '—'}</button></div>`;
   h += `<div class="list">` + days.map(L => `<button class="card" onclick="lessonView('${L.id}')"><span>${esc(L.title)}</span><span class="chev">›</span></button>`).join('');
   if (songs.length) h += `<div class="sec">🎵 歌</div>` + songs.map(L => `<button class="card" onclick="songView('${L.id}')"><span>${esc(L.title)}</span><span class="chev">›</span></button>`).join('');
@@ -173,7 +180,7 @@ function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[q
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, tap, tapSong, playAll, toggleSlow, toggleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
+Object.assign(window, { home, lessonView, songView, reviewView, favView, tap, tapSong, playAll, toggleSlow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
