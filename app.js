@@ -52,13 +52,25 @@ async function playSeg(src, start, end) {
     // Backstop: mobile throttles rapid setInterval polling, so currentTime overshoots stopAt
     // before the pause fires — and the overshot samples bleed the next line's onset over BT.
     // A single timeout sized to the clip fires near the right spot even when the poll is starved.
-    const to = setTimeout(() => { if (my === token) finish('done'); }, Math.max(0, (stopAt - start) / rate) * 1000);
+    // If it fires early (e.g. Bluetooth route setup delayed the actual start), re-arm for the rest.
+    let to;
+    const arm = ms => { to = setTimeout(() => {
+      if (my !== token) return finish('abort');
+      const left = stopAt - player.currentTime;
+      if (left > 0.06 && !player.paused) arm((left / rate) * 1000); else finish('done');
+    }, ms); };
+    arm(Math.max(0, (stopAt - start) / rate) * 1000);
   });
 }
 async function playClip(src) {
   const my = token; await ensureSrc(src); if (my !== token) return 'abort';
   player.playbackRate = slow ? 0.7 : 1; try { player.currentTime = 0; } catch (e) {} try { await player.play(); } catch (e) {}
-  return new Promise(res => { const iv = setInterval(() => { if (my !== token) { clearInterval(iv); return res('abort'); } if (player.ended || player.paused) { clearInterval(iv); res('done'); } }, 60); });
+  return new Promise(res => {
+    const done = r => { clearInterval(iv); player.removeEventListener('ended', onEnd); res(r); };
+    const onEnd = () => done('done');   // media events fire even when JS timers are throttled (screen off)
+    player.addEventListener('ended', onEnd);
+    const iv = setInterval(() => { if (my !== token) return done('abort'); if (player.ended || player.paused) done('done'); }, 60);
+  });
 }
 function rawPlay(L, ln) { if (ln.clip) return playClip(ln.clip); if (L.audio && ln.start != null) return playSeg(L.audio, ln.start, ln.end); return Promise.resolve('done'); }
 function playLine(L, ln) { stopAudio(); ytPause(); stopYtSync(); return rawPlay(L, ln); }
