@@ -39,8 +39,21 @@ function ensureSrc(src) { return new Promise(res => { if (curSrc === src) return
 function stopAudio() { token++; try { player.pause(); } catch (e) {} }
 async function playSeg(src, start, end) {
   const my = token; await ensureSrc(src); if (my !== token) return 'abort';
-  player.playbackRate = slow ? 0.7 : 1; try { player.currentTime = start; } catch (e) {} try { await player.play(); } catch (e) {}
-  return new Promise(res => { const iv = setInterval(() => { if (my !== token) { clearInterval(iv); return res('abort'); } if (player.paused || player.currentTime >= end) { try { player.pause(); } catch (e) {} clearInterval(iv); res('done'); } }, 40); });
+  const rate = slow ? 0.7 : 1;
+  player.playbackRate = rate; try { player.currentTime = start; } catch (e) {} try { await player.play(); } catch (e) {}
+  const stopAt = Math.max(start, end - 0.03);   // small guard: phone/Bluetooth playback overshoots the pause point
+  return new Promise(res => {
+    let done = false;
+    const finish = r => { if (done) return; done = true; clearInterval(iv); clearTimeout(to); if (r !== 'abort') { try { player.pause(); } catch (e) {} } res(r); };
+    const iv = setInterval(() => {
+      if (my !== token) return finish('abort');
+      if (player.paused || player.currentTime >= stopAt) return finish('done');
+    }, 25);
+    // Backstop: mobile throttles rapid setInterval polling, so currentTime overshoots stopAt
+    // before the pause fires — and the overshot samples bleed the next line's onset over BT.
+    // A single timeout sized to the clip fires near the right spot even when the poll is starved.
+    const to = setTimeout(() => { if (my === token) finish('done'); }, Math.max(0, (stopAt - start) / rate) * 1000);
+  });
 }
 async function playClip(src) {
   const my = token; await ensureSrc(src); if (my !== token) return 'abort';
