@@ -13,7 +13,7 @@ const themeIcon = t => t === 'light' ? '☀️' : t === 'dark' ? '🌙' : '🖥�
 function applyTheme() {
   const t = localStorage.getItem('jp_theme') || 'system';
   const eff = (t === 'light' || t === 'dark') ? t : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  document.body.className = eff === 'light' ? 'light' : '';
+  document.body.classList.toggle('light', eff === 'light');
   const b = document.querySelector('.theme'); if (b) b.textContent = themeIcon(t);
 }
 function cycleTheme() { const o = ['system', 'light', 'dark']; const t = localStorage.getItem('jp_theme') || 'system'; localStorage.setItem('jp_theme', o[(o.indexOf(t) + 1) % 3]); applyTheme(); }
@@ -24,6 +24,14 @@ const favLoad = () => JSON.parse(localStorage.getItem('jp_fav') || '[]');
 const isFav = (ja) => favLoad().includes(ja);
 const favId = (ja) => 'fav-' + btoa(unescape(encodeURIComponent(ja))).slice(0, 12);
 function toggleFav(ja, ev) { if (ev) ev.stopPropagation(); let f = favLoad(); f = f.includes(ja) ? f.filter(x => x !== ja) : [...f, ja]; localStorage.setItem('jp_fav', JSON.stringify(f)); const b = document.getElementById(favId(ja)); if (b) b.textContent = isFav(ja) ? '★' : '☆'; }
+
+// ---- playlist (multi-lesson queue) ----
+const plLoad = () => JSON.parse(localStorage.getItem('jp_pl') || '[]');
+const plSave = a => localStorage.setItem('jp_pl', JSON.stringify(a));
+const plLoop = () => localStorage.getItem('jp_loop') === '1';
+function togglePl(id, ev) { if (ev) ev.stopPropagation(); let a = plLoad(); a = a.includes(id) ? a.filter(x => x !== id) : [...a, id]; plSave(a); const y = window.scrollY; home(); window.scrollTo(0, y); }
+function plClear() { plSave([]); home(); }
+function toggleLoop() { localStorage.setItem('jp_loop', plLoop() ? '' : '1'); const b = document.getElementById('loopb'); if (b) b.classList.toggle('on', plLoop()); }
 
 // ---- SRS ----
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
@@ -127,7 +135,7 @@ function songLine(L, ln, i) {
 // ---- history (browser/back-gesture navigation) ----
 let navLock = false;
 function pushNav(state) { if (navLock) return; const c = history.state; if (c && c.view === state.view && c.id === state.id) return; try { history.pushState(state, ''); } catch (e) {} }
-function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else home(); navLock = false; }
+function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else if (v === 'pl') plView(); else home(); navLock = false; }
 window.addEventListener('popstate', (e) => renderView(e.state));
 
 // ---- views ----
@@ -137,9 +145,12 @@ function home() {
   const days = LESSONS.filter(l => l.type === 'day'), songs = LESSONS.filter(l => l.type === 'song');
   let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="cycleTheme()">${themeIcon(localStorage.getItem('jp_theme') || 'system')}</button></div><p class="sub">タップで再生 · オフラインOK</p></header>`;
   h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="reviewView()">🔁 復習 ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn ${fav ? '' : 'dim'}" onclick="favView()">★ お気に入り ${fav ? `<b>${fav}</b>` : '—'}</button></div>`;
-  h += `<div class="list">` + days.map(L => `<button class="card" onclick="lessonView('${L.id}')"><span>${esc(L.title)}</span><span class="chev">›</span></button>`).join('');
-  if (songs.length) h += `<div class="sec">🎵 歌</div>` + songs.map(L => `<button class="card" onclick="songView('${L.id}')"><span>${esc(L.title)}</span><span class="chev">›</span></button>`).join('');
-  h += `</div><footer>発音テストは Mac の jp-exam で 🎤</footer>`;
+  const pl = plLoad();
+  const card = (L, v) => { const k = pl.indexOf(L.id); return `<button class="card" onclick="${v}('${L.id}')"><span>${esc(L.title)}</span><span class="cr"><span class="pladd${k >= 0 ? ' on' : ''}" onclick="togglePl('${L.id}',event)">${k >= 0 ? (k + 1) : '＋'}</span><span class="chev">›</span></span></button>`; };
+  h += `<div class="list">` + days.map(L => card(L, 'lessonView')).join('');
+  if (songs.length) h += `<div class="sec">🎵 歌</div>` + songs.map(L => card(L, 'songView')).join('');
+  h += `</div><footer>＋ = プレイリストに追加 · 発音テストは Mac の jp-exam で 🎤</footer>`;
+  if (pl.length) h += `<div style="height:80px"></div><div class="plbar"><button class="plplay" onclick="plView(true)">▶︎ プレイリスト再生（${pl.length}）${plLoop() ? ' · 🔁ループ' : ''}</button><button class="plclear" onclick="plClear()">✕</button></div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
 function lessonView(id) {
@@ -202,6 +213,52 @@ function favView() {
   app.innerHTML = h + `<div class="lines">` + favs.map(ja => { const e = IDX[ja]; return lineRow(e.lesson, e.line, e.idx); }).join('') + `</div>`; window.scrollTo(0, 0);
 }
 
+// ---- playlist view ----
+let plQueue = [];
+function plRow(L, ln, gi) {
+  const av = ln.spk === 'her' ? '👩' : (ln.spk === 'me' ? '🧑' : '');
+  return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" data-li="${gi}" onclick="plPlay(${gi},false)">` +
+    (av ? `<div class="av av-${ln.spk}">${av}</div>` : '') +
+    `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
+    `<button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button></div>`;
+}
+function plView(autostart) {
+  pushNav({ view: 'pl' }); cleanupYT(); stopAudio();
+  const lessons = plLoad().map(id => LESSONS.find(l => l.id === id)).filter(Boolean);
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>プレイリスト</h2></div>`;
+  if (!lessons.length) { app.innerHTML = h + `<p class="empty">ホームで ＋ をタップして課を追加</p>`; return; }
+  h += `<div class="ctrls"><button onclick="plPlay(0,false)">▶︎ 再生</button><button onclick="plPlay(0,true)">🗣 シャドー</button><button id="loopb" class="${plLoop() ? 'on' : ''}" onclick="toggleLoop()">🔁 ループ</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢</button></div>`;
+  plQueue = [];
+  for (const L of lessons) {
+    h += `<div class="sec">${esc(L.title)}</div><div class="lines">`;
+    for (const ln of L.lines) { const gi = plQueue.length; plQueue.push({ L, ln }); h += plRow(L, ln, gi); }
+    h += `</div>`;
+  }
+  h += `<p class="hint">行をタップ → そこから続けて再生</p>`;
+  app.innerHTML = h; window.scrollTo(0, 0);
+  if (autostart === true) plPlay(0, false);
+}
+async function plPlay(startGi, shadow) {
+  stopAudio(); const my = token;
+  do {
+    for (let gi = startGi; gi < plQueue.length; gi++) {
+      if (my !== token) return;
+      const { L, ln } = plQueue[gi];
+      const el = setOn(gi); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (await rawPlay(L, ln) === 'abort' || my !== token) return;
+      if (shadow) {
+        const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.8;
+        if (el) el.classList.add('rep');
+        await sleep(Math.max(1300, dur * 1000 * 1.3));
+        if (el) el.classList.remove('rep');
+        if (my !== token) return;
+      } else await sleep(350);
+    }
+    startGi = 0;   // loop restarts from the top (also after a mid-list tap)
+  } while (plLoop() && my === token);
+  document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
+}
+
 // ---- review ----
 let queue = [], qi = 0;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -210,7 +267,7 @@ function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[q
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, tap, tapSong, playAll, toggleSlow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
+Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
