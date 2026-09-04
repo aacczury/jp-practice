@@ -1,7 +1,7 @@
 'use strict';
 const app = document.getElementById('app');
 const player = document.getElementById('player');
-let LESSONS = [], IDX = {}, slow = false, token = 0, unlocked = false;
+let LESSONS = [], IDX = {}, slow = false, shadowMode = false, token = 0, unlocked = false;
 const INTERVALS = [1, 3, 7, 16, 35, 75, 150];
 
 function unlock() { if (unlocked) return; unlocked = true; player.play().then(() => player.pause()).catch(() => {}); }
@@ -155,7 +155,7 @@ function home() {
 }
 function lessonView(id) {
   pushNav({ view: 'lesson', id }); cleanupYT(); stopAudio(); const L = LESSONS.find(x => x.id === id); enroll(L);
-  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>${esc(L.title)}</h2></div><div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>${esc(L.title)}</h2></div><div class="ctrls"><button onclick="playAll('${id}')">▶︎ 再生</button>${shadowBtn()}<button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
   h += `<div class="lines">` + L.lines.map((ln, i) => lineRow(L, ln, i)).join('') + `</div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
@@ -164,7 +164,7 @@ function songView(id) {
   let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>${esc(L.title)}</h2></div>`;
   if (vid) h += `<div class="ytwrap" id="ytwrap"><div class="ytinner"><div id="ytplayer"></div></div></div><button class="ytthrough" onclick="ytThrough()">🎬 動画で通し再生（歌詞が追従）</button><p class="hint">歌詞をタップ → その行だけ再生 · 🔊 = お手本の声</p>`;
   else h += `<a class="ytbig" href="https://www.youtube.com/results?search_query=${encodeURIComponent(L.title)}" target="_blank" rel="noopener">▶ YouTubeで検索</a>`;
-  h += `<div class="ctrls"><button onclick="playAll('${id}',false)">▶︎ 全部(声)</button><button onclick="playAll('${id}',true)">🔁 シャドー</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
+  h += `<div class="ctrls"><button onclick="playAll('${id}')">▶︎ 再生(声)</button>${shadowBtn()}<button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢 ${slow ? 'ゆっくり' : 'ふつう'}</button></div>`;
   h += `<div id="pagenav"></div><div class="lines" id="lines"></div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
   linePage = {}; L.pages.forEach((pg, pi) => pg.idxs.forEach(i => linePage[i] = pi));
@@ -188,13 +188,13 @@ function prevPage() { stopAudio(); ytPause(); stopYtSync(); renderPage(curPage -
 function nextPage() { stopAudio(); ytPause(); stopYtSync(); renderPage(curPage + 1); window.scrollTo({ top: 0 }); }
 async function tap(id, i) { stopAudio(); const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
 async function tapSong(id, i) { const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
-async function playAll(id, shadow) {
+async function playAll(id) {
   stopAudio(); ytPause(); stopYtSync(); const my = token, L = LESSONS.find(x => x.id === id);
   const idxs = (L.type === 'song' && L.pages) ? L.pages[curPage].idxs : L.lines.map((_, k) => k);
   for (const i of idxs) {
     if (my !== token) return; const ln = L.lines[i]; const el = setOn(i); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     if (await rawPlay(L, ln) === 'abort' || my !== token) return;
-    if (shadow) {                                   // your turn: pause so you can repeat it aloud
+    if (shadowMode) {                               // your turn: pause so you can repeat it aloud
       const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.8;
       if (el) el.classList.add('rep');
       await sleep(Math.max(1300, dur * 1000 * 1.3));
@@ -205,6 +205,8 @@ async function playAll(id, shadow) {
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 function toggleSlow() { slow = !slow; const b = document.getElementById('slowb'); if (b) { b.classList.toggle('on', slow); b.innerHTML = `🐢 ${slow ? 'ゆっくり' : 'ふつう'}`; } }
+function toggleShadow() { shadowMode = !shadowMode; const b = document.getElementById('shadb'); if (b) b.classList.toggle('on', shadowMode); }
+const shadowBtn = () => `<button id="shadb" class="${shadowMode ? 'on' : ''}" onclick="toggleShadow()">🗣 シャドー</button>`;
 
 function favView() {
   pushNav({ view: 'fav' }); cleanupYT(); stopAudio(); const favs = favLoad().filter(ja => IDX[ja]);
@@ -217,7 +219,7 @@ function favView() {
 let plQueue = [];
 function plRow(L, ln, gi) {
   const av = ln.spk === 'her' ? '👩' : (ln.spk === 'me' ? '🧑' : '');
-  return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" data-li="${gi}" onclick="plPlay(${gi},false)">` +
+  return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" data-li="${gi}" onclick="plPlay(${gi})">` +
     (av ? `<div class="av av-${ln.spk}">${av}</div>` : '') +
     `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
     `<button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button></div>`;
@@ -227,7 +229,7 @@ function plView(autostart) {
   const lessons = plLoad().map(id => LESSONS.find(l => l.id === id)).filter(Boolean);
   let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>プレイリスト</h2></div>`;
   if (!lessons.length) { app.innerHTML = h + `<p class="empty">ホームで ＋ をタップして課を追加</p>`; return; }
-  h += `<div class="ctrls"><button onclick="plPlay(0,false)">▶︎ 再生</button><button onclick="plPlay(0,true)">🗣 シャドー</button><button id="loopb" class="${plLoop() ? 'on' : ''}" onclick="toggleLoop()">🔁 ループ</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢</button></div>`;
+  h += `<div class="ctrls"><button onclick="plPlay(0)">▶︎ 再生</button>${shadowBtn()}<button id="loopb" class="${plLoop() ? 'on' : ''}" onclick="toggleLoop()">🔁 ループ</button><button id="slowb" class="${slow ? 'on' : ''}" onclick="toggleSlow()">🐢</button></div>`;
   plQueue = [];
   for (const L of lessons) {
     h += `<div class="sec">${esc(L.title)}</div><div class="lines">`;
@@ -236,9 +238,9 @@ function plView(autostart) {
   }
   h += `<p class="hint">行をタップ → そこから続けて再生</p>`;
   app.innerHTML = h; window.scrollTo(0, 0);
-  if (autostart === true) plPlay(0, false);
+  if (autostart === true) plPlay(0);
 }
-async function plPlay(startGi, shadow) {
+async function plPlay(startGi) {
   stopAudio(); const my = token;
   do {
     for (let gi = startGi; gi < plQueue.length; gi++) {
@@ -246,7 +248,7 @@ async function plPlay(startGi, shadow) {
       const { L, ln } = plQueue[gi];
       const el = setOn(gi); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       if (await rawPlay(L, ln) === 'abort' || my !== token) return;
-      if (shadow) {
+      if (shadowMode) {
         const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.8;
         if (el) el.classList.add('rep');
         await sleep(Math.max(1300, dur * 1000 * 1.3));
@@ -267,7 +269,7 @@ function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[q
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
+Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
