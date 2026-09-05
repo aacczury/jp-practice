@@ -74,13 +74,30 @@ async function playClip(src) {
   const my = token; await ensureSrc(src); if (my !== token) return 'abort';
   player.playbackRate = slow ? 0.7 : 1; try { player.currentTime = 0; } catch (e) {} try { await player.play(); } catch (e) {}
   return new Promise(res => {
-    const done = r => { clearInterval(iv); player.removeEventListener('ended', onEnd); res(r); };
+    const done = r => { clearInterval(iv); player.removeEventListener('ended', onEnd); player.removeEventListener('error', onEnd); res(r); };
     const onEnd = () => done('done');   // media events fire even when JS timers are throttled (screen off)
     player.addEventListener('ended', onEnd);
-    const iv = setInterval(() => { if (my !== token) return done('abort'); if (player.ended || player.paused) done('done'); }, 60);
+    player.addEventListener('error', onEnd);
+    // NOTE: `paused` alone is NOT completion — a lock-screen/OS pause must HOLD the line
+    // (resume continues it), not advance the queue. Only `ended` or an abort moves on.
+    const iv = setInterval(() => { if (my !== token) return done('abort'); if (player.ended) done('done'); }, 60);
   });
 }
-function rawPlay(L, ln) { if (ln.clip) return playClip(ln.clip); if (L.audio && ln.start != null) return playSeg(L.audio, ln.start, ln.end); return Promise.resolve('done'); }
+function setMedia(L, ln) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: ln.ja, artist: L.title, album: '日本語 · にほんご', artwork: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }, { src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] });
+    navigator.mediaSession.playbackState = 'playing';
+  } catch (e) {}
+}
+if ('mediaSession' in navigator) {
+  try {
+    navigator.mediaSession.setActionHandler('play', () => { player.play().catch(() => {}); navigator.mediaSession.playbackState = 'playing'; });
+    navigator.mediaSession.setActionHandler('pause', () => { try { player.pause(); } catch (e) {} navigator.mediaSession.playbackState = 'paused'; });
+    navigator.mediaSession.setActionHandler('stop', () => stopAudio());
+  } catch (e) {}
+}
+function rawPlay(L, ln) { setMedia(L, ln); if (ln.clip) return playClip(ln.clip); if (L.audio && ln.start != null) return playSeg(L.audio, ln.start, ln.end); return Promise.resolve('done'); }
 function playLine(L, ln) { stopAudio(); ytPause(); stopYtSync(); return rawPlay(L, ln); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -200,7 +217,9 @@ async function playAll(id) {
       await sleep(Math.max(1300, dur * 1000 * 1.3));
       if (el) el.classList.remove('rep');
       if (my !== token) return;
-    } else await sleep(250);
+    // Screen off: keep the queue rolling with barely a gap — the clips carry their own
+    // lead-in/tail silence, and a silent JS-timer gap is where iOS suspends the page.
+    } else await sleep(document.hidden ? 60 : 250);
   }
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
@@ -254,7 +273,7 @@ async function plPlay(startGi) {
         await sleep(Math.max(1300, dur * 1000 * 1.3));
         if (el) el.classList.remove('rep');
         if (my !== token) return;
-      } else await sleep(350);
+      } else await sleep(document.hidden ? 60 : 350);
     }
     startGi = 0;   // loop restarts from the top (also after a mid-list tap)
   } while (plLoop() && my === token);
