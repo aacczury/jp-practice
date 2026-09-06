@@ -83,6 +83,7 @@ async function playClip(src) {
     const iv = setInterval(() => { if (my !== token) return done('abort'); if (player.ended) done('done'); }, 60);
   });
 }
+let curSkip = null;   // set by the active play loop: curSkip(+1/-1) jumps a line (lock-screen ⏮⏭)
 function setMedia(L, ln) {
   if (!('mediaSession' in navigator)) return;
   try {
@@ -95,10 +96,12 @@ if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('play', () => { player.play().catch(() => {}); navigator.mediaSession.playbackState = 'playing'; });
     navigator.mediaSession.setActionHandler('pause', () => { try { player.pause(); } catch (e) {} navigator.mediaSession.playbackState = 'paused'; });
     navigator.mediaSession.setActionHandler('stop', () => stopAudio());
+    navigator.mediaSession.setActionHandler('nexttrack', () => { if (curSkip) curSkip(1); });
+    navigator.mediaSession.setActionHandler('previoustrack', () => { if (curSkip) curSkip(-1); });
   } catch (e) {}
 }
 function rawPlay(L, ln) { setMedia(L, ln); if (ln.clip) return playClip(ln.clip); if (L.audio && ln.start != null) return playSeg(L.audio, ln.start, ln.end); return Promise.resolve('done'); }
-function playLine(L, ln) { stopAudio(); ytPause(); stopYtSync(); return rawPlay(L, ln); }
+function playLine(L, ln) { stopAudio(); ytPause(); stopYtSync(); curSkip = null; return rawPlay(L, ln); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- YouTube IFrame player (song page) ----
@@ -205,11 +208,13 @@ function prevPage() { stopAudio(); ytPause(); stopYtSync(); renderPage(curPage -
 function nextPage() { stopAudio(); ytPause(); stopYtSync(); renderPage(curPage + 1); window.scrollTo({ top: 0 }); }
 async function tap(id, i) { stopAudio(); const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
 async function tapSong(id, i) { const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
-async function playAll(id) {
+async function playAll(id, from) {
   stopAudio(); ytPause(); stopYtSync(); const my = token, L = LESSONS.find(x => x.id === id);
   const idxs = (L.type === 'song' && L.pages) ? L.pages[curPage].idxs : L.lines.map((_, k) => k);
-  for (const i of idxs) {
+  for (let pi = Math.max(0, from || 0); pi < idxs.length; pi++) {
+    const i = idxs[pi];
     if (my !== token) return; const ln = L.lines[i]; const el = setOn(i); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    curSkip = d => playAll(id, pi + d);
     if (await rawPlay(L, ln) === 'abort' || my !== token) return;
     if (shadowMode) {                               // your turn: pause so you can repeat it aloud
       const dur = (ln.end != null && ln.start != null) ? (ln.end - ln.start) : 1.8;
@@ -221,6 +226,7 @@ async function playAll(id) {
     // lead-in/tail silence, and a silent JS-timer gap is where iOS suspends the page.
     } else await sleep(document.hidden ? 60 : 250);
   }
+  curSkip = null;
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 function toggleSlow() { slow = !slow; const b = document.getElementById('slowb'); if (b) { b.classList.toggle('on', slow); b.innerHTML = `🐢 ${slow ? 'ゆっくり' : 'ふつう'}`; } }
@@ -265,6 +271,7 @@ async function plPlay(startGi) {
     for (let gi = startGi; gi < plQueue.length; gi++) {
       if (my !== token) return;
       const { L, ln } = plQueue[gi];
+      curSkip = d => plPlay(Math.max(0, gi + d));
       const el = setOn(gi); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       if (await rawPlay(L, ln) === 'abort' || my !== token) return;
       if (shadowMode) {
@@ -277,6 +284,7 @@ async function plPlay(startGi) {
     }
     startGi = 0;   // loop restarts from the top (also after a mid-list tap)
   } while (plLoop() && my === token);
+  curSkip = null;
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 
