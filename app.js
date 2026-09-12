@@ -4,7 +4,7 @@ const player = document.getElementById('player');
 let LESSONS = [], IDX = {}, slow = false, shadowMode = false, token = 0, unlocked = false;
 const INTERVALS = [1, 3, 7, 16, 35, 75, 150];
 
-function unlock() { if (unlocked) return; unlocked = true; player.play().then(() => player.pause()).catch(() => {}); }
+function unlock() { if (unlocked) return; unlocked = true; player.play().then(() => player.pause()).catch(() => {}); keeper.play().then(() => keeper.pause()).catch(() => {}); }
 document.addEventListener('touchend', unlock, { once: true });
 document.addEventListener('click', unlock, { once: true });
 
@@ -41,10 +41,20 @@ function enroll(L) { if (L.type === 'song') return; const s = srsLoad(); for (co
 function dueList() { const s = srsLoad(), t = today(), o = []; for (const ja in s) if (s[ja].due <= t && IDX[ja]) o.push(ja); return o; }
 function schedule(ja, g) { const s = srsLoad(), c = s[ja] || { step: 0, reps: 0 }; let n; if (g === 'again') { c.step = 0; n = 1; } else if (g === 'easy') { c.step = Math.min(c.step + 2, 6); n = INTERVALS[c.step]; } else { c.step = Math.min(c.step + 1, 6); n = INTERVALS[c.step]; } c.reps = (c.reps || 0) + 1; const d = new Date(); d.setDate(d.getDate() + n); c.due = d.toISOString().slice(0, 10); s[ja] = c; srsSave(s); }
 
+// ---- background keep-alive ----
+// Chromium only engages the media session (lock-screen controls + screen-off playback)
+// for media >= 5s; the per-line clips are 1-3s and never qualify, so with the screen off
+// Chrome froze the page after the current clip. A looping near-silent 30s track playing
+// alongside a queue makes the OS treat the app as real media playback.
+const keeper = new Audio('audio/silence.mp3');
+keeper.loop = true; let keeperWant = false;
+function keeperOn() { keeperWant = true; keeper.play().catch(() => {}); }
+function keeperOff() { keeperWant = false; try { keeper.pause(); } catch (e) {} }
+
 // ---- TTS audio ----
 let curSrc = '';
 function ensureSrc(src) { return new Promise(res => { if (curSrc === src) return res(); curSrc = src; player.src = src; const on = () => { player.removeEventListener('loadedmetadata', on); res(); }; player.addEventListener('loadedmetadata', on); player.load(); }); }
-function stopAudio() { token++; try { player.pause(); } catch (e) {} }
+function stopAudio() { token++; keeperOff(); try { player.pause(); } catch (e) {} }
 async function playSeg(src, start, end) {
   const my = token; await ensureSrc(src); if (my !== token) return 'abort';
   const rate = slow ? 0.7 : 1;
@@ -93,8 +103,8 @@ function setMedia(L, ln) {
 }
 if ('mediaSession' in navigator) {
   try {
-    navigator.mediaSession.setActionHandler('play', () => { player.play().catch(() => {}); navigator.mediaSession.playbackState = 'playing'; });
-    navigator.mediaSession.setActionHandler('pause', () => { try { player.pause(); } catch (e) {} navigator.mediaSession.playbackState = 'paused'; });
+    navigator.mediaSession.setActionHandler('play', () => { player.play().catch(() => {}); if (keeperWant) keeper.play().catch(() => {}); navigator.mediaSession.playbackState = 'playing'; });
+    navigator.mediaSession.setActionHandler('pause', () => { try { player.pause(); } catch (e) {} try { keeper.pause(); } catch (e) {} navigator.mediaSession.playbackState = 'paused'; });
     navigator.mediaSession.setActionHandler('stop', () => stopAudio());
     navigator.mediaSession.setActionHandler('nexttrack', () => { if (curSkip) curSkip(1); });
     navigator.mediaSession.setActionHandler('previoustrack', () => { if (curSkip) curSkip(-1); });
@@ -209,7 +219,7 @@ function nextPage() { stopAudio(); ytPause(); stopYtSync(); renderPage(curPage +
 async function tap(id, i) { stopAudio(); const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
 async function tapSong(id, i) { const L = LESSONS.find(x => x.id === id); const el = setOn(i); await playLine(L, L.lines[i]); if (el) el.classList.remove('on'); }
 async function playAll(id, from) {
-  stopAudio(); ytPause(); stopYtSync(); const my = token, L = LESSONS.find(x => x.id === id);
+  stopAudio(); ytPause(); stopYtSync(); keeperOn(); const my = token, L = LESSONS.find(x => x.id === id);
   const idxs = (L.type === 'song' && L.pages) ? L.pages[curPage].idxs : L.lines.map((_, k) => k);
   for (let pi = Math.max(0, from || 0); pi < idxs.length; pi++) {
     const i = idxs[pi];
@@ -226,7 +236,7 @@ async function playAll(id, from) {
     // lead-in/tail silence, and a silent JS-timer gap is where iOS suspends the page.
     } else await sleep(document.hidden ? 60 : 250);
   }
-  curSkip = null;
+  keeperOff(); curSkip = null;
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 function toggleSlow() { slow = !slow; const b = document.getElementById('slowb'); if (b) { b.classList.toggle('on', slow); b.innerHTML = `🐢 ${slow ? 'ゆっくり' : 'ふつう'}`; } }
@@ -266,7 +276,7 @@ function plView(autostart) {
   if (autostart === true) plPlay(0);
 }
 async function plPlay(startGi) {
-  stopAudio(); const my = token;
+  stopAudio(); keeperOn(); const my = token;
   do {
     for (let gi = startGi; gi < plQueue.length; gi++) {
       if (my !== token) return;
@@ -284,7 +294,7 @@ async function plPlay(startGi) {
     }
     startGi = 0;   // loop restarts from the top (also after a mid-list tap)
   } while (plLoop() && my === token);
-  curSkip = null;
+  keeperOff(); curSkip = null;
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 
