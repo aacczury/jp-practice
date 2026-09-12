@@ -179,7 +179,7 @@ function home() {
   const card = (L, v) => { const k = pl.indexOf(L.id); return `<button class="card" onclick="${v}('${L.id}')"><span>${esc(L.title)}</span><span class="cr"><span class="pladd${k >= 0 ? ' on' : ''}" onclick="togglePl('${L.id}',event)">${k >= 0 ? (k + 1) : '＋'}</span><span class="chev">›</span></span></button>`; };
   h += `<div class="list">` + days.map(L => card(L, 'lessonView')).join('');
   if (songs.length) h += `<div class="sec">🎵 歌</div>` + songs.map(L => card(L, 'songView')).join('');
-  h += `</div><footer>＋ = プレイリストに追加 · 発音テストは Mac の jp-exam で 🎤</footer>`;
+  h += `</div><footer>＋ = プレイリストに追加 · 発音テストは Mac の jp-exam で 🎤<br><span class="ver" id="verline" onclick="refreshApp()">${verText()}</span></footer>`;
   if (pl.length) h += `<div style="height:80px"></div><div class="plbar"><button class="plplay" onclick="plView(true)">▶︎ プレイリスト再生（${pl.length}）${plLoop() ? ' · 🔁ループ' : ''}</button><button class="plclear" onclick="plClear()">✕</button></div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
@@ -306,7 +306,26 @@ function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[q
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate });
+// ---- version (footer): what cache is ACTUALLY live on this device ----
+// version.json is served cache-first by the SW, so it always describes the running
+// cache — after an update lands it changes together with everything else.
+let VERSION = null;
+const verText = () => VERSION ? `v${VERSION.ver} · ${VERSION.built} · タップで更新` : 'v…';
+async function refreshApp() {
+  const e = document.getElementById('verline'); if (e) e.textContent = '更新チェック中…';
+  try {
+    const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (r) {
+      await r.update();
+      const w = r.installing || r.waiting;   // a new SW is downloading the new cache — let it finish
+      if (w) await new Promise(res => { const t = setTimeout(res, 15000); w.addEventListener('statechange', () => { if (w.state === 'activated' || w.state === 'redundant') { clearTimeout(t); res(); } }); });
+    }
+  } catch (err) {}
+  location.reload();
+}
+fetch('data/version.json').then(r => r.json()).then(v => { VERSION = v; const e = document.getElementById('verline'); if (e) e.textContent = verText(); }).catch(() => {});
+
+Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate, refreshApp });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
