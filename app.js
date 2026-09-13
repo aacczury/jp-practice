@@ -173,13 +173,13 @@ function home() {
   pushNav({ view: 'home' }); cleanupYT(); stopAudio();
   const due = dueList().length, fav = favLoad().length;
   const days = LESSONS.filter(l => l.type === 'day'), songs = LESSONS.filter(l => l.type === 'song');
-  let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="cycleTheme()">${themeIcon(localStorage.getItem('jp_theme') || 'system')}</button></div><p class="sub">タップで再生 · オフラインOK</p></header>`;
+  let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="cycleTheme()">${themeIcon(localStorage.getItem('jp_theme') || 'system')}</button></div><p class="sub">タップで再生 · オフラインOK · <span class="ver" id="verline" onclick="refreshApp()">${verText()}</span></p></header>`;
   h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="reviewView()">🔁 復習 ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn ${fav ? '' : 'dim'}" onclick="favView()">★ お気に入り ${fav ? `<b>${fav}</b>` : '—'}</button></div>`;
   const pl = plLoad();
   const card = (L, v) => { const k = pl.indexOf(L.id); return `<button class="card" onclick="${v}('${L.id}')"><span>${esc(L.title)}</span><span class="cr"><span class="pladd${k >= 0 ? ' on' : ''}" onclick="togglePl('${L.id}',event)">${k >= 0 ? (k + 1) : '＋'}</span><span class="chev">›</span></span></button>`; };
   h += `<div class="list">` + days.map(L => card(L, 'lessonView')).join('');
   if (songs.length) h += `<div class="sec">🎵 歌</div>` + songs.map(L => card(L, 'songView')).join('');
-  h += `</div><footer>＋ = プレイリストに追加 · 発音テストは Mac の jp-exam で 🎤<br><span class="ver" id="verline" onclick="refreshApp()">${verText()}</span></footer>`;
+  h += `</div><footer>＋ = プレイリストに追加 · 発音テストは Mac の jp-exam で 🎤</footer>`;
   if (pl.length) h += `<div style="height:80px"></div><div class="plbar"><button class="plplay" onclick="plView(true)">▶︎ プレイリスト再生（${pl.length}）${plLoop() ? ' · 🔁ループ' : ''}</button><button class="plclear" onclick="plClear()">✕</button></div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
@@ -310,7 +310,7 @@ function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 // version.json is served cache-first by the SW, so it always describes the running
 // cache — after an update lands it changes together with everything else.
 let VERSION = null;
-const verText = () => VERSION ? `v${VERSION.ver} · ${VERSION.built} · タップで更新` : 'v…';
+const verText = () => VERSION ? `v${VERSION.ver} · ${VERSION.built.slice(5, 16)} ⟳` : 'v…';
 async function refreshApp() {
   const e = document.getElementById('verline'); if (e) e.textContent = '更新チェック中…';
   try {
