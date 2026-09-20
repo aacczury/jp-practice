@@ -37,7 +37,15 @@ function toggleLoop() { localStorage.setItem('jp_loop', plLoop() ? '' : '1'); co
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const srsLoad = () => JSON.parse(localStorage.getItem('jp_srs') || '{}');
 const srsSave = (s) => localStorage.setItem('jp_srs', JSON.stringify(s));
-function enroll(L) { if (L.type === 'song') return; const s = srsLoad(); for (const ln of L.lines) if (!s[ln.ja]) s[ln.ja] = { due: today(), step: 0, reps: 0 }; srsSave(s); }
+function enroll(L) { if (L.type === 'song') return; const s = srsLoad(); for (const ln of L.lines) if (!s[ln.ja]) s[ln.ja] = { due: today(), step: 0, reps: 0 }; srsSave(s); const day = parseInt(L.id.slice(3), 10); vEnroll(VOCAB.filter(v => v.days.includes(day)).map(v => v.w)); }
+
+// ---- vocab SRS (separate deck from the sentence one) ----
+let VOCAB = [];
+const vsrsLoad = () => JSON.parse(localStorage.getItem('jp_vsrs') || '{}');
+const vsrsSave = s => localStorage.setItem('jp_vsrs', JSON.stringify(s));
+function vEnroll(ws) { const s = vsrsLoad(); for (const w of ws) if (!s[w]) s[w] = { due: today(), step: 0, reps: 0 }; vsrsSave(s); }
+const vDue = () => { const s = vsrsLoad(), t = today(); return VOCAB.filter(v => s[v.w] && s[v.w].due <= t).map(v => v.w); };
+function vSchedule(w, g) { const s = vsrsLoad(), c = s[w] || { step: 0, reps: 0 }; let n; if (g === 'again') { c.step = 0; n = 1; } else if (g === 'easy') { c.step = Math.min(c.step + 2, 6); n = INTERVALS[c.step]; } else { c.step = Math.min(c.step + 1, 6); n = INTERVALS[c.step]; } c.reps = (c.reps || 0) + 1; const d = new Date(); d.setDate(d.getDate() + n); c.due = d.toISOString().slice(0, 10); s[w] = c; vsrsSave(s); }
 function dueList() { const s = srsLoad(), t = today(), o = []; for (const ja in s) if (s[ja].due <= t && IDX[ja]) o.push(ja); return o; }
 function schedule(ja, g) { const s = srsLoad(), c = s[ja] || { step: 0, reps: 0 }; let n; if (g === 'again') { c.step = 0; n = 1; } else if (g === 'easy') { c.step = Math.min(c.step + 2, 6); n = INTERVALS[c.step]; } else { c.step = Math.min(c.step + 1, 6); n = INTERVALS[c.step]; } c.reps = (c.reps || 0) + 1; const d = new Date(); d.setDate(d.getDate() + n); c.due = d.toISOString().slice(0, 10); s[ja] = c; srsSave(s); }
 
@@ -165,7 +173,7 @@ function songLine(L, ln, i) {
 // ---- history (browser/back-gesture navigation) ----
 let navLock = false;
 function pushNav(state) { if (navLock) return; const c = history.state; if (c && c.view === state.view && c.id === state.id) return; try { history.pushState(state, ''); } catch (e) {} }
-function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else if (v === 'pl') plView(); else home(); navLock = false; }
+function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else if (v === 'pl') plView(); else if (v === 'vocab') vocabView(); else if (v === 'vreview') vReviewView(); else home(); navLock = false; }
 window.addEventListener('popstate', (e) => renderView(e.state));
 
 // ---- views ----
@@ -174,7 +182,8 @@ function home() {
   const due = dueList().length, fav = favLoad().length;
   const days = LESSONS.filter(l => l.type === 'day'), songs = LESSONS.filter(l => l.type === 'song');
   let h = `<header><div class="hrow"><h1>日本語</h1><button class="theme" onclick="cycleTheme()">${themeIcon(localStorage.getItem('jp_theme') || 'system')}</button></div><p class="sub">タップで再生 · オフラインOK · <span class="ver" id="verline" onclick="refreshApp()">${verText()}</span></p></header>`;
-  h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="reviewView()">🔁 復習 ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn ${fav ? '' : 'dim'}" onclick="favView()">★ お気に入り ${fav ? `<b>${fav}</b>` : '—'}</button></div>`;
+  const vdue = vDue().length;
+  h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="reviewView()">🔁 復習 ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn ${vdue ? '' : 'dim'}" onclick="vocabView()">🃏 単語 ${vdue ? `<b>${vdue}</b>` : '—'}</button><button class="review-btn ${fav ? '' : 'dim'}" onclick="favView()">★ ${fav ? `<b>${fav}</b>` : '—'}</button></div>`;
   const pl = plLoad();
   const card = (L, v) => { const k = pl.indexOf(L.id); return `<button class="card" onclick="${v}('${L.id}')"><span>${esc(L.title)}</span><span class="cr"><span class="pladd${k >= 0 ? ' on' : ''}" onclick="togglePl('${L.id}',event)">${k >= 0 ? (k + 1) : '＋'}</span><span class="chev">›</span></span></button>`; };
   h += `<div class="list">` + days.map(L => card(L, 'lessonView')).join('');
@@ -298,6 +307,25 @@ async function plPlay(startGi) {
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 
+// ---- vocab views ----
+const dayChips = (days, stop) => days.map(d => `<span class="chip" onclick="lessonView('day${String(d).padStart(2, '0')}')${stop ? ';event.stopPropagation()' : ''}">Day ${d}</span>`).join('');
+function vPlay(i) { stopAudio(); curSkip = null; const v = VOCAB[i]; setMedia({ title: '単語' }, { ja: v.w }); playClip(v.clip); }
+function vocabView() {
+  pushNav({ view: 'vocab' }); cleanupYT(); stopAudio();
+  const s = vsrsLoad(), due = vDue().length, got = VOCAB.filter(v => s[v.w]).length;
+  let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>🃏 単語</h2></div>`;
+  h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="vReviewView()">復習する ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn" onclick="vAdd20()">＋20語追加</button></div>`;
+  h += `<p class="hint">追加済み ${got} / ${VOCAB.length} 語 · 課を開くとその課の単語も自動で追加 · Day をタップでその課へ</p>`;
+  h += `<div class="lines">` + VOCAB.map((v, i) => `<div class="line${s[v.w] ? '' : ' voff'}" onclick="vPlay(${i})"><div class="lc"><div class="ja">${esc(v.w)} <span class="vr">${esc(v.r)}</span></div><div class="mn">${esc(v.m)}</div><div class="vdays">${dayChips(v.days, true)}</div></div><span class="spk">🔊</span></div>`).join('') + `</div>`;
+  app.innerHTML = h; window.scrollTo(0, 0);
+}
+function vAdd20() { const s = vsrsLoad(); vEnroll(VOCAB.filter(v => !s[v.w]).slice(0, 20).map(v => v.w)); vocabView(); }
+let vq = [], vqi = 0;
+function vReviewView() { pushNav({ view: 'vreview' }); cleanupYT(); stopAudio(); vq = shuffle(vDue()); vqi = 0; if (!vq.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } vcard(); }
+function vcard() { if (vqi >= vq.length) return vocabView(); const v = VOCAB.find(x => x.w === vq[vqi]); app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語 ${vqi + 1}/${vq.length}</h2></div><div class="rev"><div class="mn big">${esc(v.m)}</div><div class="vdays">${dayChips(v.days)}</div><div id="ans" class="ans hidden"><div class="ja">${esc(v.w)}</div><div class="ro">${esc(v.r)}</div></div><div id="rb"><button class="big-btn" onclick="vReveal()">答えを見る 🔊</button></div></div>`; }
+function vReveal() { const v = VOCAB.find(x => x.w === vq[vqi]); document.getElementById('ans').classList.remove('hidden'); stopAudio(); curSkip = null; playClip(v.clip); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="vRate('again')">もう一度</button><button onclick="vRate('good')">OK</button><button onclick="vRate('easy')">かんたん</button></div>`; }
+function vRate(g) { vSchedule(vq[vqi], g); vqi++; vcard(); }
+
 // ---- review ----
 let queue = [], qi = 0;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -325,11 +353,11 @@ async function refreshApp() {
 }
 fetch('data/version.json').then(r => r.json()).then(v => { VERSION = v; const e = document.getElementById('verline'); if (e) e.textContent = verText(); }).catch(() => {});
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate, refreshApp });
+Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, vocabView, vReviewView, vAdd20, vPlay, vReveal, vRate, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate, refreshApp });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
-  LESSONS = d.lessons;
+  LESSONS = d.lessons; VOCAB = d.vocab || [];
   for (const L of LESSONS) L.lines.forEach((ln, i) => { if (!IDX[ln.ja]) IDX[ln.ja] = { lesson: L, line: ln, idx: i }; });
   history.replaceState({ view: 'home' }, ''); navLock = true; home(); navLock = false;
 }).catch(() => { app.innerHTML = '<p class="empty">読み込み失敗 😢</p>'; });
