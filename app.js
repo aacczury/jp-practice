@@ -22,8 +22,11 @@ if (window.matchMedia) try { window.matchMedia('(prefers-color-scheme: dark)').a
 // ---- favorites ----
 const favLoad = () => JSON.parse(localStorage.getItem('jp_fav') || '[]');
 const isFav = (ja) => favLoad().includes(ja);
-const favId = (ja) => 'fav-' + btoa(unescape(encodeURIComponent(ja))).slice(0, 12);
-function toggleFav(ja, ev) { if (ev) ev.stopPropagation(); let f = favLoad(); f = f.includes(ja) ? f.filter(x => x !== ja) : [...f, ja]; localStorage.setItem('jp_fav', JSON.stringify(f)); const b = document.getElementById(favId(ja)); if (b) b.textContent = isFav(ja) ? '★' : '☆'; }
+// One sentence can appear in several lessons (and twice in a playlist), so stars are
+// addressed by data attribute and ALL stars for that sentence update together — an id
+// would only ever update the first occurrence (the "wrong star lights up" bug).
+const starBtn = ja => `<button class="star" data-fav="${encodeURIComponent(ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ja)}'),event)">${isFav(ja) ? '★' : '☆'}</button>`;
+function toggleFav(ja, ev) { if (ev) ev.stopPropagation(); let f = favLoad(); f = f.includes(ja) ? f.filter(x => x !== ja) : [...f, ja]; localStorage.setItem('jp_fav', JSON.stringify(f)); const on = isFav(ja); document.querySelectorAll(`.star[data-fav="${encodeURIComponent(ja)}"]`).forEach(b => b.textContent = on ? '★' : '☆'); }
 
 // ---- playlist (multi-lesson queue) ----
 const plLoad = () => JSON.parse(localStorage.getItem('jp_pl') || '[]');
@@ -157,14 +160,14 @@ function lineRow(L, ln, i) {
   return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" data-li="${i}" onclick="tap('${L.id}',${i})">` +
     (av ? `<div class="av av-${ln.spk}">${av}</div>` : '') +
     `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
-    `<button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button></div>`;
+    starBtn(ln.ja) + `</div>`;
 }
 function songLine(L, ln, i) {
   const hasYT = L.youtube && L.youtube.id && ln.yt != null;
   const t = hasYT ? Math.max(0, Math.round(ln.yt + (L.youtube.offset || 0))) : null;
   const mmss = t != null ? `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : '';
   const open = hasYT ? `onclick="ytSeekLine(${i})"` : `onclick="tapSong('${L.id}',${i})"`;
-  return `<div class="line song" data-li="${i}" ${open}><button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button>` +
+  return `<div class="line song" data-li="${i}" ${open}>` + starBtn(ln.ja) +
     `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
     (t != null ? `<span class="ts">${mmss}</span>` : '') +
     `<button class="spk" onclick="tapSong('${L.id}',${i});event.stopPropagation()">🔊</button></div>`;
@@ -266,7 +269,7 @@ function plRow(L, ln, gi) {
   return `<div class="line${ln.spk ? ' ' + ln.spk : ''}" data-li="${gi}" onclick="plPlay(${gi})">` +
     (av ? `<div class="av av-${ln.spk}">${av}</div>` : '') +
     `<div class="lc"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}${ln.meaning ? `<div class="mn">${esc(ln.meaning)}</div>` : ''}</div>` +
-    `<button class="star" id="${favId(ln.ja)}" onclick="toggleFav(decodeURIComponent('${encodeURIComponent(ln.ja)}'),event)">${isFav(ln.ja) ? '★' : '☆'}</button></div>`;
+    starBtn(ln.ja) + `</div>`;
 }
 function plView(autostart) {
   pushNav({ view: 'pl' }); cleanupYT(); stopAudio();
@@ -307,30 +310,43 @@ async function plPlay(startGi) {
   document.querySelectorAll('.line').forEach(e => { e.classList.remove('on'); e.classList.remove('rep'); });
 }
 
-// ---- vocab views ----
+// ---- vocab views (kana-only: he reads 五十音, not kanji — v.w stays internal as the key) ----
 const dayChips = (days, stop) => days.map(d => `<span class="chip" onclick="lessonView('day${String(d).padStart(2, '0')}')${stop ? ';event.stopPropagation()' : ''}">Day ${d}</span>`).join('');
-function vPlay(i) { stopAudio(); curSkip = null; const v = VOCAB[i]; setMedia({ title: '単語' }, { ja: v.w }); playClip(v.clip); }
+const vDir = () => localStorage.getItem('jp_vdir') || 'je';   // 'je' 日→英 (default) | 'ej' 英→日
+function vFlipDir() { localStorage.setItem('jp_vdir', vDir() === 'je' ? 'ej' : 'je'); vocabView(); }
+function vPlay(i) { stopAudio(); curSkip = null; const v = VOCAB[i]; setMedia({ title: '単語' }, { ja: v.r }); playClip(v.clip); }
 function vocabView() {
   pushNav({ view: 'vocab' }); cleanupYT(); stopAudio();
   const s = vsrsLoad(), due = vDue().length, got = VOCAB.filter(v => s[v.w]).length;
   let h = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>🃏 単語</h2></div>`;
-  h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="vReviewView()">復習する ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn" onclick="vAdd20()">＋20語追加</button></div>`;
+  h += `<div class="qa"><button class="review-btn ${due ? '' : 'dim'}" onclick="vReviewView()">復習する ${due ? `<b>${due}</b>` : '—'}</button><button class="review-btn" onclick="vFlipDir()">${vDir() === 'je' ? '日 → 英' : '英 → 日'}</button><button class="review-btn" onclick="vAdd20()">＋20語</button></div>`;
   h += `<p class="hint">追加済み ${got} / ${VOCAB.length} 語 · 課を開くとその課の単語も自動で追加 · Day をタップでその課へ</p>`;
-  h += `<div class="lines">` + VOCAB.map((v, i) => `<div class="line${s[v.w] ? '' : ' voff'}" onclick="vPlay(${i})"><div class="lc"><div class="ja">${esc(v.w)} <span class="vr">${esc(v.r)}</span></div><div class="mn">${esc(v.m)}</div><div class="vdays">${dayChips(v.days, true)}</div></div><span class="spk">🔊</span></div>`).join('') + `</div>`;
+  h += `<div class="lines">` + VOCAB.map((v, i) => `<div class="line${s[v.w] ? '' : ' voff'}" onclick="vPlay(${i})"><div class="lc"><div class="ja">${esc(v.r)}</div><div class="mn">${esc(v.m)}</div><div class="vdays">${dayChips(v.days, true)}</div></div><span class="spk">🔊</span></div>`).join('') + `</div>`;
   app.innerHTML = h; window.scrollTo(0, 0);
 }
 function vAdd20() { const s = vsrsLoad(); vEnroll(VOCAB.filter(v => !s[v.w]).slice(0, 20).map(v => v.w)); vocabView(); }
 let vq = [], vqi = 0;
 function vReviewView() { pushNav({ view: 'vreview' }); cleanupYT(); stopAudio(); vq = shuffle(vDue()); vqi = 0; if (!vq.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } vcard(); }
-function vcard() { if (vqi >= vq.length) return vocabView(); const v = VOCAB.find(x => x.w === vq[vqi]); app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語 ${vqi + 1}/${vq.length}</h2></div><div class="rev"><div class="mn big">${esc(v.m)}</div><div class="vdays">${dayChips(v.days)}</div><div id="ans" class="ans hidden"><div class="ja">${esc(v.w)}</div><div class="ro">${esc(v.r)}</div></div><div id="rb"><button class="big-btn" onclick="vReveal()">答えを見る 🔊</button></div></div>`; }
-function vReveal() { const v = VOCAB.find(x => x.w === vq[vqi]); document.getElementById('ans').classList.remove('hidden'); stopAudio(); curSkip = null; playClip(v.clip); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="vRate('again')">もう一度</button><button onclick="vRate('good')">OK</button><button onclick="vRate('easy')">かんたん</button></div>`; }
+function vcard() {
+  if (vqi >= vq.length) return vocabView();
+  const v = VOCAB.find(x => x.w === vq[vqi]), je = vDir() === 'je';
+  const jaSide = extra => `<div class="ans" onclick="vSay()"><div class="ja">${esc(v.r)}</div>${extra || ''}</div>`;
+  const enSide = `<div class="mn big">${esc(v.m)}</div><div class="vdays">${dayChips(v.days)}</div>`;
+  app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語 ${vqi + 1}/${vq.length}</h2></div><div class="rev">` +
+    (je ? jaSide(`<div class="ro">🔊 タップでもう一度</div>`) : enSide) +
+    `<div id="ans" class="hidden">` + (je ? enSide : jaSide()) + `</div>` +
+    `<div id="rb"><button class="big-btn" onclick="vReveal()">${je ? '意味を見る' : '答えを見る 🔊'}</button></div></div>`;
+  if (je) vSay();
+}
+function vSay() { const v = VOCAB.find(x => x.w === vq[vqi]); stopAudio(); curSkip = null; setMedia({ title: '単語' }, { ja: v.r }); playClip(v.clip); }
+function vReveal() { document.getElementById('ans').classList.remove('hidden'); if (vDir() !== 'je') vSay(); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="vRate('again')">もう一度</button><button onclick="vRate('good')">OK</button><button onclick="vRate('easy')">かんたん</button></div>`; }
 function vRate(g) { vSchedule(vq[vqi], g); vqi++; vcard(); }
 
 // ---- review ----
 let queue = [], qi = 0;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; };
 function reviewView() { pushNav({ view: 'review' }); cleanupYT(); stopAudio(); queue = shuffle(dueList()); qi = 0; if (!queue.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } rcard(); }
-function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[qi]].line; app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>復習 ${qi + 1}/${queue.length}</h2></div><div class="rev"><div class="mn big">${esc(ln.meaning) || '—'}</div><div id="ans" class="ans hidden"><div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}</div><div id="rb"><button class="big-btn" onclick="reveal()">答えを見る 🔊</button></div></div>`; }
+function rcard() { if (qi >= queue.length) return home(); const ln = IDX[queue[qi]].line; app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>復習 ${qi + 1}/${queue.length}</h2></div><div class="rev"><div class="mn big">${esc(ln.meaning) || '—'}</div><div id="ans" class="ans hidden">${starBtn(ln.ja)}<div class="ja">${esc(ln.ja)}</div>${ln.romaji ? `<div class="ro">${esc(ln.romaji)}</div>` : ''}</div><div id="rb"><button class="big-btn" onclick="reveal()">答えを見る 🔊</button></div></div>`; }
 function reveal() { const e = IDX[queue[qi]]; document.getElementById('ans').classList.remove('hidden'); playLine(e.lesson, e.line); document.getElementById('rb').innerHTML = `<div class="rate"><button onclick="rate('again')">もう一度</button><button onclick="rate('good')">OK</button><button onclick="rate('easy')">かんたん</button></div>`; }
 function rate(g) { schedule(queue[qi], g); qi++; rcard(); }
 
@@ -353,7 +369,7 @@ async function refreshApp() {
 }
 fetch('data/version.json').then(r => r.json()).then(v => { VERSION = v; const e = document.getElementById('verline'); if (e) e.textContent = verText(); }).catch(() => {});
 
-Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, vocabView, vReviewView, vAdd20, vPlay, vReveal, vRate, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate, refreshApp });
+Object.assign(window, { home, lessonView, songView, reviewView, favView, plView, plPlay, togglePl, plClear, toggleLoop, vocabView, vReviewView, vAdd20, vPlay, vReveal, vRate, vFlipDir, vSay, tap, tapSong, playAll, toggleSlow, toggleShadow, cycleTheme, toggleFav, ytSeekLine, ytThrough, prevPage, nextPage, reveal, rate, refreshApp });
 
 applyTheme();
 fetch('data/lessons.json').then(r => r.json()).then(d => {
