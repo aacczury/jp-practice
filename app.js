@@ -176,7 +176,7 @@ function songLine(L, ln, i) {
 // ---- history (browser/back-gesture navigation) ----
 let navLock = false;
 function pushNav(state) { if (navLock) return; const c = history.state; if (c && c.view === state.view && c.id === state.id) return; try { history.pushState(state, ''); } catch (e) {} }
-function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else if (v === 'pl') plView(); else if (v === 'vocab') vocabView(); else if (v === 'vreview') vReviewView(); else home(); navLock = false; }
+function renderView(s) { navLock = true; const v = (s && s.view) || 'home'; if (v === 'lesson') lessonView(s.id); else if (v === 'song') songView(s.id); else if (v === 'review') reviewView(); else if (v === 'fav') favView(); else if (v === 'pl') plView(); else if (v === 'vocab') vocabView(); else if (v === 'vreview') vReviewView(true); else home(); navLock = false; }
 window.addEventListener('popstate', (e) => renderView(e.state));
 
 // ---- views ----
@@ -326,7 +326,15 @@ function vocabView() {
 }
 function vAdd20() { const s = vsrsLoad(); vEnroll(VOCAB.filter(v => !s[v.w]).slice(0, 20).map(v => v.w)); vocabView(); }
 let vq = [], vqi = 0;
-function vReviewView() { pushNav({ view: 'vreview' }); cleanupYT(); stopAudio(); vq = shuffle(vDue()); vqi = 0; if (!vq.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; } vcard(); }
+function vReviewView(resume) {
+  pushNav({ view: 'vreview' }); cleanupYT(); stopAudio();
+  // Coming BACK (a Day chip on a card → lesson → history.back()) must land on the same
+  // card: reshuffling here would jump to a different word mid-session.
+  if (resume === true && vq.length && vqi < vq.length) return vcard();
+  vq = shuffle(vDue()); vqi = 0;
+  if (!vq.length) { app.innerHTML = `<div class="lh"><button class="back" onclick="history.back()">‹</button><h2>単語復習</h2></div><p class="empty">🎉 今日はおわり！</p>`; return; }
+  vcard();
+}
 function vcard() {
   if (vqi >= vq.length) return vocabView();
   const v = VOCAB.find(x => x.w === vq[vqi]), je = vDir() === 'je';
